@@ -106,6 +106,17 @@ namespace visage {
 
     FT_Face face() const { return face_; }
 
+    bool hasKerning() const { return FT_HAS_KERNING(face_); }
+
+    float kerning(char32_t left, char32_t right) const {
+      if (!FT_HAS_KERNING(face_))
+        return 0.0f;
+      FT_Vector delta;
+      FT_Get_Kerning(face_, FT_Get_Char_Index(face_, left),
+                     FT_Get_Char_Index(face_, right), FT_KERNING_UNFITTED, &delta);
+      return static_cast<float>(delta.x) / 64.0f;
+    }
+
   private:
     FT_Face face_ = nullptr;
   };
@@ -235,6 +246,18 @@ namespace visage {
     int dataSize() const { return data_size_; }
     const std::string& id() const { return id_; }
 
+    float kerning(char32_t left, char32_t right) {
+      if (!type_face_->hasKerning())
+        return 0.0f;
+      auto key = std::make_pair(left, right);
+      auto it = kerning_cache_.find(key);
+      if (it != kerning_cache_.end())
+        return it->second;
+      float k = type_face_->kerning(left, right);
+      kerning_cache_[key] = k;
+      return k;
+    }
+
   private:
     void packGlyph(PackedGlyph* packed_glyph, char32_t character) {
       if (!atlas_map_.addRect(character, packed_glyph->width, packed_glyph->height))
@@ -256,6 +279,7 @@ namespace visage {
     int data_size_ = 0;
 
     std::map<char32_t, PackedGlyph> packed_glyphs_;
+    std::map<std::pair<char32_t, char32_t>, float> kerning_cache_;
     bgfx::TextureHandle texture_handle_ = { bgfx::kInvalidHandle };
   };
 
@@ -338,6 +362,8 @@ namespace visage {
         return i;
 
       string_width += advance;
+      if (!character_override && i + 1 < string_length && !isIgnored(string[i + 1]))
+        string_width += packed_font_->kerning(string[i], string[i + 1]);
     }
 
     return string_length;
@@ -354,8 +380,11 @@ namespace visage {
 
     float width = 0.0f;
     for (int i = 0; i < length; ++i) {
-      if (!isNewLine(string[i]) && !isIgnored(string[i]))
+      if (!isNewLine(string[i]) && !isIgnored(string[i])) {
         width += packed_font_->packedGlyph(string[i])->x_advance;
+        if (i + 1 < length && !isNewLine(string[i + 1]) && !isIgnored(string[i + 1]))
+          width += packed_font_->kerning(string[i], string[i + 1]);
+      }
     }
 
     return width;
@@ -392,6 +421,8 @@ namespace visage {
       quads[i].height = packed_glyph->height;
 
       pen_x += packed_glyph->x_advance;
+      if (!character_override && i + 1 < length)
+        pen_x += packed_font_->kerning(text[i], text[i + 1]);
     }
   }
 

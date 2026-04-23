@@ -73,6 +73,20 @@ FetchContent_Declare(freetype GIT_REPOSITORY https://gitlab.freedesktop.org/free
   EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(freetype)
+
+# Enable GPOS kerning in FreeType (modern fonts use GPOS, not legacy kern table)
+foreach(_ftoption_path
+    "${freetype_SOURCE_DIR}/include/freetype/config/ftoption.h"
+    "${freetype_BINARY_DIR}/include/freetype/config/ftoption.h")
+  if(EXISTS "${_ftoption_path}")
+    file(READ "${_ftoption_path}" _ft_content)
+    string(REPLACE "/* #define TT_CONFIG_OPTION_GPOS_KERNING */"
+                   "#define TT_CONFIG_OPTION_GPOS_KERNING"
+                   _ft_content "${_ft_content}")
+    file(WRITE "${_ftoption_path}" "${_ft_content}")
+  endif()
+endforeach()
+
 set(CMAKE_MESSAGE_LOG_LEVEL "NOTICE")
 
 if (MSVC)
@@ -82,6 +96,7 @@ else ()
 endif ()
 
 target_compile_options(freetype PRIVATE ${DISABLE_WARNINGS})
+target_compile_definitions(freetype PRIVATE TT_CONFIG_OPTION_GPOS_KERNING)
 target_compile_options(bgfx PRIVATE ${DISABLE_WARNINGS})
 target_compile_options(bx PRIVATE ${DISABLE_WARNINGS})
 target_compile_definitions(bx PRIVATE BX_CONFIG_EXCEPTION_HANDLING_USE_WINDOWS_SEH=0)
