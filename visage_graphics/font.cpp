@@ -213,7 +213,8 @@ namespace visage {
     void checkInit() {
       if (!bgfx::isValid(texture_handle_)) {
         texture_handle_ = bgfx::createTexture2D(atlas_map_.width(), atlas_map_.height(), false, 1,
-                                                bgfx::TextureFormat::BGRA8);
+                                                bgfx::TextureFormat::BGRA8,
+                                                BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT);
         int width = atlas_map_.width();
         int height = atlas_map_.height();
         std::unique_ptr<unsigned int[]> clear = std::make_unique<unsigned int[]>(width * height);
