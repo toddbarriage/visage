@@ -95,6 +95,8 @@ namespace visage {
     }
     Font withDpiScale(float dpi_scale) const;
     Font withSize(float size) const;
+    Font withLetterSpacing(float spacing) const;
+    float letterSpacing() const { return letter_spacing_; }
 
     int widthOverflowIndex(const char32_t* string, int string_length, float width,
                            bool round = false, int character_override = 0) const {
@@ -138,9 +140,12 @@ namespace visage {
     float nativeLowerDipHeight() const;
     std::vector<int> nativeLineBreaks(const char32_t* string, int length, float width) const;
 
+    float nativeLetterSpacing() const { return letter_spacing_ * (dpi_scale_ ? dpi_scale_ : 1.0f); }
+
     float size_ = 0.0f;
     int native_size_ = 0;
     float dpi_scale_ = 0.0f;
+    float letter_spacing_ = 0.0f;
     PackedFont* packed_font_ = nullptr;
   };
 

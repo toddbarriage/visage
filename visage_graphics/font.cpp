@@ -191,7 +191,7 @@ namespace visage {
       packed_glyph->height = glyph->bitmap.rows;
       packed_glyph->x_offset = glyph->bitmap_left;
       packed_glyph->y_offset = glyph->bitmap_top;
-      packed_glyph->x_advance = glyph->advance.x * kAdvanceMult;
+      packed_glyph->x_advance = glyph->linearHoriAdvance / 65536.0f;
       packed_glyph->type_face = type_face;
 
       packGlyph(packed_glyph, character);
@@ -313,6 +313,7 @@ namespace visage {
     size_ = other.size_;
     native_size_ = other.native_size_;
     dpi_scale_ = other.dpi_scale_;
+    letter_spacing_ = other.letter_spacing_;
     packed_font_ = FontCache::loadPackedFont(other.packed_font_);
   }
 
@@ -321,6 +322,7 @@ namespace visage {
     std::swap(size_, copy.size_);
     std::swap(native_size_, copy.native_size_);
     std::swap(dpi_scale_, copy.dpi_scale_);
+    std::swap(letter_spacing_, copy.letter_spacing_);
     std::swap(packed_font_, copy.packed_font_);
     return *this;
   }
@@ -331,20 +333,31 @@ namespace visage {
   }
 
   Font Font::withDpiScale(float dpi_scale) const {
-    if (packed_font_ == nullptr)
-      return { size_, nullptr, 0, dpi_scale };
-    return { size_, packed_font_->data(), packed_font_->dataSize(), dpi_scale };
+    Font result = packed_font_ == nullptr
+      ? Font(size_, nullptr, 0, dpi_scale)
+      : Font(size_, packed_font_->data(), packed_font_->dataSize(), dpi_scale);
+    result.letter_spacing_ = letter_spacing_;
+    return result;
   }
 
   Font Font::withSize(float size) const {
-    if (packed_font_ == nullptr)
-      return { size, nullptr, 0, dpi_scale_ };
-    return { size, packed_font_->data(), packed_font_->dataSize(), dpi_scale_ };
+    Font result = packed_font_ == nullptr
+      ? Font(size, nullptr, 0, dpi_scale_)
+      : Font(size, packed_font_->data(), packed_font_->dataSize(), dpi_scale_);
+    result.letter_spacing_ = letter_spacing_;
+    return result;
+  }
+
+  Font Font::withLetterSpacing(float spacing) const {
+    Font result(*this);
+    result.letter_spacing_ = spacing;
+    return result;
   }
 
   int Font::nativeWidthOverflowIndex(const char32_t* string, int string_length, float width,
                                      bool round, int character_override) const {
     float string_width = 0;
+    float spacing = nativeLetterSpacing();
     for (int i = 0; i < string_length; ++i) {
       char32_t character = string[i];
       if (character_override)
@@ -362,8 +375,11 @@ namespace visage {
         return i;
 
       string_width += advance;
-      if (!character_override && i + 1 < string_length && !isIgnored(string[i + 1]))
-        string_width += packed_font_->kerning(string[i], string[i + 1]);
+      if (i + 1 < string_length) {
+        if (!character_override && !isIgnored(string[i + 1]))
+          string_width += packed_font_->kerning(string[i], string[i + 1]);
+        string_width += spacing;
+      }
     }
 
     return string_length;
@@ -373,17 +389,21 @@ namespace visage {
     if (length <= 0)
       return 0.0f;
 
+    float spacing = nativeLetterSpacing();
+
     if (character_override) {
       float advance = packed_font_->packedGlyph(character_override)->x_advance;
-      return advance * length;
+      return advance * length + spacing * std::max(0, length - 1);
     }
 
     float width = 0.0f;
     for (int i = 0; i < length; ++i) {
       if (!isNewLine(string[i]) && !isIgnored(string[i])) {
         width += packed_font_->packedGlyph(string[i])->x_advance;
-        if (i + 1 < length && !isNewLine(string[i + 1]) && !isIgnored(string[i + 1]))
+        if (i + 1 < length && !isNewLine(string[i + 1]) && !isIgnored(string[i + 1])) {
           width += packed_font_->kerning(string[i], string[i + 1]);
+          width += spacing;
+        }
       }
     }
 
@@ -421,8 +441,11 @@ namespace visage {
       quads[i].height = packed_glyph->height;
 
       pen_x += packed_glyph->x_advance;
-      if (!character_override && i + 1 < length)
-        pen_x += packed_font_->kerning(text[i], text[i + 1]);
+      if (i + 1 < length) {
+        if (!character_override)
+          pen_x += packed_font_->kerning(text[i], text[i + 1]);
+        pen_x += nativeLetterSpacing();
+      }
     }
   }
 
