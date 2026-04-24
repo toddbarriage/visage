@@ -32,12 +32,14 @@
 
 #include "windowing_win32.h"
 
+#include "cursor_data.h"
 #include "visage_utils/events.h"
 #include "visage_utils/file_system.h"
 #include "visage_utils/string_utils.h"
 #include "visage_utils/thread_utils.h"
 
 #include <algorithm>
+#include <cstring>
 #include <dxgi1_4.h>
 #include <map>
 #include <ShlObj.h>
@@ -163,6 +165,78 @@ namespace visage {
     CloseClipboard();
   }
 
+  namespace {
+
+  // Creates an HCURSOR from embedded cursor bitmap data.
+  //
+  // The returned HCURSOR should be stored in a function-scope static for process-
+  // lifetime caching. These handles are intentionally leaked (never DestroyCursor'd) --
+  // matches the pattern used by Chromium, JUCE, and Qt for library-level cursor
+  // caches. Cleanup via atexit or static destruction risks shutdown-order hazards
+  // (use-after-free if another static touches the cursor during its teardown).
+  // Windows reclaims all process GDI/User objects on exit regardless.
+  HCURSOR createEmbeddedCursor(const cursor_data::EmbeddedCursor& c) {
+    HDC screen_dc = GetDC(nullptr);
+
+    BITMAPINFO color_bmi = {};
+    color_bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    color_bmi.bmiHeader.biWidth = c.width;
+    color_bmi.bmiHeader.biHeight = c.height;  // positive = bottom-up, matches .cur DIB format
+    color_bmi.bmiHeader.biPlanes = 1;
+    color_bmi.bmiHeader.biBitCount = c.bits_per_pixel;
+    color_bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* color_pixels = nullptr;
+    HBITMAP hbm_color = CreateDIBSection(screen_dc, &color_bmi, DIB_RGB_COLORS,
+                                          &color_pixels, nullptr, 0);
+    if (!hbm_color || !color_pixels) {
+      ReleaseDC(nullptr, screen_dc);
+      return nullptr;
+    }
+    std::memcpy(color_pixels, c.color_bits, c.color_size);
+
+    struct MonoBitmapInfo {
+      BITMAPINFOHEADER header;
+      RGBQUAD colors[2];
+    } mask_bmi = {};
+    mask_bmi.header.biSize = sizeof(BITMAPINFOHEADER);
+    mask_bmi.header.biWidth = c.width;
+    mask_bmi.header.biHeight = c.height;
+    mask_bmi.header.biPlanes = 1;
+    mask_bmi.header.biBitCount = 1;
+    mask_bmi.header.biCompression = BI_RGB;
+    mask_bmi.colors[0] = {0, 0, 0, 0};
+    mask_bmi.colors[1] = {0xff, 0xff, 0xff, 0};
+
+    void* mask_pixels = nullptr;
+    HBITMAP hbm_mask = CreateDIBSection(screen_dc,
+                                         reinterpret_cast<BITMAPINFO*>(&mask_bmi),
+                                         DIB_RGB_COLORS, &mask_pixels, nullptr, 0);
+    ReleaseDC(nullptr, screen_dc);
+
+    if (!hbm_mask || !mask_pixels) {
+      DeleteObject(hbm_color);
+      return nullptr;
+    }
+    std::memcpy(mask_pixels, c.and_mask, c.mask_size);
+
+    ICONINFO info = {};
+    info.fIcon = FALSE;
+    info.xHotspot = c.hotspot_x;
+    info.yHotspot = c.hotspot_y;
+    info.hbmMask = hbm_mask;
+    info.hbmColor = hbm_color;
+
+    HCURSOR cursor = reinterpret_cast<HCURSOR>(CreateIconIndirect(&info));
+
+    DeleteObject(hbm_color);
+    DeleteObject(hbm_mask);
+
+    return cursor;
+  }
+
+  }  // namespace
+
   void setCursorStyle(MouseCursor style) {
     static const HCURSOR arrow_cursor = LoadCursor(nullptr, IDC_ARROW);
     static const HCURSOR ibeam_cursor = LoadCursor(nullptr, IDC_IBEAM);
@@ -178,6 +252,16 @@ namespace visage {
     case MouseCursor::IBeam: cursor = ibeam_cursor; break;
     case MouseCursor::Crosshair: cursor = crosshair_cursor; break;
     case MouseCursor::Pointing: cursor = pointing_cursor; break;
+    case MouseCursor::Grab: {
+      static HCURSOR grab_cursor = createEmbeddedCursor(cursor_data::kGrab);
+      WindowWin32::setCursor(grab_cursor ? grab_cursor : arrow_cursor);
+      return;
+    }
+    case MouseCursor::Grabbing: {
+      static HCURSOR grabbing_cursor = createEmbeddedCursor(cursor_data::kGrabbing);
+      WindowWin32::setCursor(grabbing_cursor ? grabbing_cursor : arrow_cursor);
+      return;
+    }
     case MouseCursor::HorizontalResize: cursor = horizontal_resize_cursor; break;
     case MouseCursor::VerticalResize: cursor = vertical_resize_cursor; break;
     case MouseCursor::Dragging:

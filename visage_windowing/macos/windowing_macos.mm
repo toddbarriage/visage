@@ -132,6 +132,16 @@ namespace visage {
     case MouseCursor::IBeam: cursor = ibeam_cursor; break;
     case MouseCursor::Crosshair: cursor = crosshair_cursor; break;
     case MouseCursor::Pointing: cursor = pointing_cursor; break;
+    case MouseCursor::Grab: {
+      static const NSCursor* grab_cursor = [NSCursor openHandCursor];
+      cursor = grab_cursor;
+      break;
+    }
+    case MouseCursor::Grabbing: {
+      static const NSCursor* grabbing_cursor = [NSCursor closedHandCursor];
+      cursor = grabbing_cursor;
+      break;
+    }
     case MouseCursor::MultiDirectionalResize:
     case MouseCursor::Dragging: cursor = dragging_cursor; break;
     case MouseCursor::HorizontalResize: cursor = horizontal_resize_cursor; break;

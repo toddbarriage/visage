@@ -72,6 +72,8 @@ namespace visage {
     case MouseCursor::IBeam: return "text";
     case MouseCursor::Crosshair: return "crosshair";
     case MouseCursor::Pointing: return "pointer";
+    case MouseCursor::Grab: return "grab";
+    case MouseCursor::Grabbing: return "grabbing";
     case MouseCursor::HorizontalResize: return "ew-resize";
     case MouseCursor::VerticalResize: return "ns-resize";
     case MouseCursor::Dragging:
