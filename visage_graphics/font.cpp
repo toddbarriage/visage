@@ -184,8 +184,6 @@ namespace visage {
     }
 
     PackedGlyph* packCharacterGlyph(PackedGlyph* packed_glyph, const TypeFace* type_face, char32_t character) {
-      static constexpr float kAdvanceMult = 1.0f / (1 << 6);
-
       FT_GlyphSlot glyph = type_face->characterInfo(character);
       packed_glyph->width = glyph->bitmap.width;
       packed_glyph->height = glyph->bitmap.rows;
