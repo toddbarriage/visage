@@ -207,6 +207,6 @@ namespace visage {
   }
 
   const bgfx::FrameBufferHandle& ApplicationEditor::windowFrameBuffer() const {
-    return canvas_->layer(0)->frameBuffer();
+    return canvas_->compositeFrameBuffer();
   }
 }
