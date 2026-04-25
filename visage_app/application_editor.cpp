@@ -205,4 +205,8 @@ namespace visage {
       *height = std::max(min_height, *height);
     }
   }
+
+  const bgfx::FrameBufferHandle& ApplicationEditor::windowFrameBuffer() const {
+    return canvas_->layer(0)->frameBuffer();
+  }
 }

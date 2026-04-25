@@ -23,6 +23,10 @@
 
 #include "visage_ui/frame.h"
 
+// Forward-declare the bgfx handle type so we don't pull the full bgfx header
+// into Visage's public API. FrameBufferHandle is { uint16_t idx; }.
+namespace bgfx { struct FrameBufferHandle; }
+
 namespace visage {
   class ApplicationEditor;
   class Canvas;
@@ -99,6 +103,11 @@ namespace visage {
     }
 
     void addClientDecoration() { top_level_->addClientDecoration(); }
+
+    // Exposes the composite layer's bgfx framebuffer handle so external
+    // renderers (e.g. Slug text) can submit draw calls to the same surface.
+    const bgfx::FrameBufferHandle& windowFrameBuffer() const;
+
     HitTestResult hitTest(const Point& position) const override {
       if (position.y < kDefaultClientTitleBarHeight && top_level_->hasClientDecoration())
         return HitTestResult::TitleBar;
