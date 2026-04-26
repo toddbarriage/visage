@@ -93,7 +93,10 @@ namespace visage {
 
     int width() const { return composite_layer_.width(); }
     int height() const { return composite_layer_.height(); }
-    bgfx::FrameBufferHandle& compositeFrameBuffer() const { return composite_layer_.frameBuffer(); }
+    bgfx::FrameBufferHandle& compositeFrameBuffer() {
+      composite_layer_.checkFrameBuffer();
+      return composite_layer_.frameBuffer();
+    }
     void setDimensions(int width, int height);
     void setDpiScale(float scale) { dpi_scale_ = scale; }
 
