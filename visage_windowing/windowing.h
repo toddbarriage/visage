@@ -133,11 +133,19 @@ namespace visage {
     void setDpiScale(float scale) { dpi_scale_ = scale; }
     float dpiScale() const { return dpi_scale_; }
 
+    // Render-scale mouse coordinate mapping. When active (> 0), mouse events
+    // are multiplied by this factor instead of divided by dpiScale. This
+    // decouples mouse coordinate space from frame rendering scale — the HWND
+    // is smaller than the render target, so we need to map up, not down.
+    void setMouseScale(float scale) { mouse_scale_ = scale; }
+
     IPoint convertToNative(const Point& logical_point) const {
       return { static_cast<int>(std::round(logical_point.x * dpi_scale_)),
                static_cast<int>(std::round(logical_point.y * dpi_scale_)) };
     }
     Point convertToLogical(const IPoint& point) const {
+      if (mouse_scale_ > 0.0f)
+        return { point.x * mouse_scale_, point.y * mouse_scale_ };
       return { point.x / dpi_scale_, point.y / dpi_scale_ };
     }
 
@@ -200,6 +208,7 @@ namespace visage {
 
     std::function<void(double)> draw_callback_ = nullptr;
     float dpi_scale_ = 1.0f;
+    float mouse_scale_ = 0.0f;
     bool visible_ = true;
     bool mouse_relative_mode_ = false;
     int client_width_ = 0;

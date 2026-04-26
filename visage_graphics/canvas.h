@@ -35,6 +35,8 @@
 #include "visage_utils/space.h"
 #include "visage_utils/time_utils.h"
 
+#include <cstdint>
+#include <functional>
 #include <limits>
 
 namespace visage {
@@ -94,6 +96,23 @@ namespace visage {
     bgfx::FrameBufferHandle& compositeFrameBuffer() const { return composite_layer_.frameBuffer(); }
     void setDimensions(int width, int height);
     void setDpiScale(float scale) { dpi_scale_ = scale; }
+
+    // Render-scale pipeline: offscreen composite at render resolution,
+    // window-backed FB at display resolution, Catmull-Rom downscale between them.
+    // Handle indices are raw uint16_t to avoid pulling bgfx headers into Visage
+    // public API. The plugin side converts to bgfx::TextureHandle / FrameBufferHandle.
+    using DownscaleCallback = std::function<int(int submit_pass,
+                                                uint16_t composite_texture_idx,
+                                                uint16_t window_fb_idx,
+                                                int display_w, int display_h)>;
+    void setupRenderScale(void* window_handle, int display_w, int display_h,
+                          int render_w, int render_h);
+    void updateDisplaySize(void* window_handle, int display_w, int display_h);
+    void clearRenderScale(void* window_handle, int display_w, int display_h);
+    void setDownscaleCallback(DownscaleCallback cb) { downscale_callback_ = std::move(cb); }
+    float renderScale() const { return render_scale_; }
+    int renderWidth() const { return render_width_; }
+    int renderHeight() const { return render_height_; }
     void setNativePixelScale() { state_.scale = 1.0f; }
     void setLogicalPixelScale() { state_.scale = dpi_scale_; }
 
@@ -821,6 +840,15 @@ namespace visage {
     std::vector<Layer*> layers_;
 
     float refresh_time_ = 0.0f;
+
+    // Render-scale state: active when render_scale_ > 0
+    float render_scale_ = 0.0f;
+    uint16_t window_fb_idx_ = 65535;  // BGFX_INVALID_HANDLE equivalent
+    int display_width_ = 0;
+    int display_height_ = 0;
+    int render_width_ = 0;
+    int render_height_ = 0;
+    DownscaleCallback downscale_callback_;
 
     VISAGE_LEAK_CHECKER(Canvas)
   };

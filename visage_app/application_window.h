@@ -50,6 +50,14 @@ namespace visage {
         window_->setNativeWindowSize(width, height);
     }
 
+    // Resize ONLY the native child window, without touching frame bounds.
+    // Used during scale changes when render scale is active: the HWND must
+    // match the display size, but frame bounds must stay at render size.
+    void setNativeDisplaySize(int width, int height) {
+      if (window_)
+        window_->setNativeWindowSize(width, height);
+    }
+
     void setWindowDimensions(const Dimension& width, const Dimension& height);
     void setWindowDimensions(const Dimension& x, const Dimension& y, const Dimension& width,
                              const Dimension& height);

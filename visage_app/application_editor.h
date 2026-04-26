@@ -23,6 +23,9 @@
 
 #include "visage_ui/frame.h"
 
+#include <cstdint>
+#include <functional>
+
 // Forward-declare the bgfx handle type so we don't pull the full bgfx header
 // into Visage's public API. FrameBufferHandle is { uint16_t idx; }.
 namespace bgfx { struct FrameBufferHandle; }
@@ -63,6 +66,21 @@ namespace visage {
     void notifyContentsResized();
     const Screenshot& takeScreenshot();
     void setCanvasDetails();
+
+    // Render-scale pipeline: renders at render_w x render_h, displays at
+    // current window size. Decouples render resolution from display size.
+    // Handle indices are raw uint16_t to avoid pulling bgfx headers into
+    // Visage public API. Plugin side converts to typed bgfx handles.
+    using DownscaleCallback = std::function<int(int submit_pass,
+                                                uint16_t composite_texture_idx,
+                                                uint16_t window_fb_idx,
+                                                int display_w, int display_h)>;
+    void setupRenderScale(int render_w, int render_h);
+    void onDisplayResized();
+    void setDownscaleCallback(DownscaleCallback cb);
+    bool isRenderScaleActive() const { return render_scale_active_; }
+    int renderWidth() const { return render_scale_active_ ? render_width_ : nativeWidth(); }
+    int renderHeight() const { return render_scale_active_ ? render_height_ : nativeHeight(); }
 
     void addToWindow(Window* window);
     void setWindowless(int width, int height);
@@ -130,6 +148,12 @@ namespace visage {
     float fixed_aspect_ratio_ = 0.0f;
     float min_width_ = 0.0f;
     float min_height_ = 0.0f;
+
+    // Render-scale state
+    bool render_scale_active_ = false;
+    bool suppress_resize_notification_ = false;
+    int render_width_ = 0;
+    int render_height_ = 0;
 
     std::vector<Frame*> stale_children_;
     std::vector<Frame*> drawing_children_;

@@ -33,6 +33,16 @@ namespace visage {
   TopLevelFrame::~TopLevelFrame() = default;
 
   void TopLevelFrame::resized() {
+    if (editor_->isRenderScaleActive()) {
+      // Render-scale mode: force DPI to 1.0. Frame bounds are 1:1 with the
+      // canvas coordinate system. OS DPI only affects the HWND pixel count;
+      // mouseScale handles the coordinate mapping. Propagating OS dpiScale
+      // (e.g. 1.5) would shrink logical bounds, breaking hit testing.
+      setDpiScale(1.0f);
+      editor_->onDisplayResized();
+      return;
+    }
+
     if (editor_->window())
       setDpiScale(editor_->window()->dpiScale());
 
@@ -95,7 +105,7 @@ namespace visage {
   }
 
   void ApplicationEditor::notifyContentsResized() {
-    if (window_)
+    if (window_ && !suppress_resize_notification_)
       window_->setInternalWindowSize(nativeWidth(), nativeHeight());
     on_window_contents_resized_.callback();
   }
@@ -105,10 +115,11 @@ namespace visage {
   }
 
   void ApplicationEditor::setCanvasDetails() {
-    canvas_->setDimensions(nativeWidth(), nativeHeight());
+    if (!render_scale_active_)
+      canvas_->setDimensions(nativeWidth(), nativeHeight());
 
     if (window_)
-      canvas_->setDpiScale(window_->dpiScale());
+      canvas_->setDpiScale(render_scale_active_ ? 1.0f : window_->dpiScale());
   }
 
   void ApplicationEditor::addToWindow(Window* window) {
@@ -146,6 +157,64 @@ namespace visage {
     window_event_handler_ = nullptr;
     window_ = nullptr;
     canvas_->removeFromWindow();
+  }
+
+  void ApplicationEditor::setupRenderScale(int render_w, int render_h) {
+    if (!window_)
+      return;
+
+    render_scale_active_ = true;
+    render_width_ = render_w;
+    render_height_ = render_h;
+
+    // Use clientWidth/Height for the true physical HWND size (accounts for OS DPI).
+    int displayW = window_->clientWidth();
+    int displayH = window_->clientHeight();
+
+    canvas_->setupRenderScale(window_->nativeHandle(), displayW, displayH, render_w, render_h);
+    window_->setMouseScale(static_cast<float>(render_w) / displayW);
+
+    // Force DPI to 1.0 on both the frame tree AND the canvas.
+    // Frame DPI: ensures setNativeBounds produces logical = native (1:1 with canvas).
+    // Canvas DPI: ensures Canvas::beginRegion() doesn't scale drawing ops by OS DPI.
+    top_level_->setDpiScale(1.0f);
+    canvas_->setDpiScale(1.0f);
+
+    // Expand BOTH top_level_ AND the editor frame to render dimensions.
+    // top_level_ must be render-sized for frameAtPoint hit testing.
+    // The editor must be render-sized because Canvas::beginRegion() clamps
+    // drawing to the editor's region bounds.
+    suppress_resize_notification_ = true;
+    top_level_->setNativeBounds(0, 0, render_w, render_h);
+    setNativeBounds(0, 0, render_w, render_h);
+    suppress_resize_notification_ = false;
+  }
+
+  void ApplicationEditor::onDisplayResized() {
+    if (!window_ || !render_scale_active_)
+      return;
+
+    int displayW = window_->clientWidth();
+    int displayH = window_->clientHeight();
+
+    if (displayW <= 0 || displayH <= 0)
+      return;
+
+    canvas_->updateDisplaySize(window_->nativeHandle(), displayW, displayH);
+    window_->setMouseScale(static_cast<float>(render_width_) / displayW);
+
+    // Restore BOTH top_level_ AND editor to render dimensions.
+    // handleResized() just set top_level_ to display size — fix it.
+    suppress_resize_notification_ = true;
+    top_level_->setNativeBounds(0, 0, render_width_, render_height_);
+    setNativeBounds(0, 0, render_width_, render_height_);
+    suppress_resize_notification_ = false;
+
+    on_window_contents_resized_.callback();
+  }
+
+  void ApplicationEditor::setDownscaleCallback(DownscaleCallback cb) {
+    canvas_->setDownscaleCallback(std::move(cb));
   }
 
   void ApplicationEditor::drawWindow() {

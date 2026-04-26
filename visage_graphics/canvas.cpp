@@ -59,6 +59,70 @@ namespace visage {
     bgfx::reset(0, 0, BGFX_RESET_FLUSH_AFTER_RENDER | BGFX_RESET_FLIP_AFTER_RENDER);
   }
 
+  void Canvas::setupRenderScale(void* window_handle, int display_w, int display_h,
+                                  int render_w, int render_h) {
+    if (display_w <= 0 || display_h <= 0)
+      return;
+
+    render_scale_ = static_cast<float>(render_w) / display_w;
+    display_width_ = display_w;
+    display_height_ = display_h;
+    render_width_ = render_w;
+    render_height_ = render_h;
+
+    // Composite layer renders offscreen at render resolution.
+    // removeFromWindow() clears the window handle so checkFrameBuffer()
+    // creates a texture RT instead of a swap chain.
+    composite_layer_.removeFromWindow();
+    setDimensions(render_w, render_h);
+
+    // Create window-backed FB at display resolution for presentation.
+    bgfx::FrameBufferHandle old_fb = { window_fb_idx_ };
+    if (bgfx::isValid(old_fb))
+      bgfx::destroy(old_fb);
+    bgfx::FrameBufferHandle new_fb = bgfx::createFrameBuffer(
+        window_handle, display_w, display_h, bgfx::TextureFormat::RGBA8);
+    window_fb_idx_ = new_fb.idx;
+  }
+
+  void Canvas::updateDisplaySize(void* window_handle, int display_w, int display_h) {
+    if (render_scale_ <= 0.0f)
+      return;
+    if (display_w <= 0 || display_h <= 0)
+      return;
+    if (display_w == display_width_ && display_h == display_height_)
+      return;
+
+    display_width_ = display_w;
+    display_height_ = display_h;
+    render_scale_ = static_cast<float>(render_width_) / display_w;
+
+    bgfx::FrameBufferHandle old_fb = { window_fb_idx_ };
+    if (bgfx::isValid(old_fb))
+      bgfx::destroy(old_fb);
+    bgfx::FrameBufferHandle new_fb = bgfx::createFrameBuffer(
+        window_handle, display_w, display_h, bgfx::TextureFormat::RGBA8);
+    window_fb_idx_ = new_fb.idx;
+  }
+
+  void Canvas::clearRenderScale(void* window_handle, int display_w, int display_h) {
+    render_scale_ = 0.0f;
+    render_width_ = 0;
+    render_height_ = 0;
+    display_width_ = 0;
+    display_height_ = 0;
+
+    bgfx::FrameBufferHandle fb = { window_fb_idx_ };
+    if (bgfx::isValid(fb)) {
+      bgfx::destroy(fb);
+      window_fb_idx_ = bgfx::kInvalidHandle;
+    }
+
+    // Restore composite layer to window-backed mode
+    composite_layer_.pairToWindow(window_handle, display_w, display_h);
+    setDimensions(display_w, display_h);
+  }
+
   void Canvas::setDimensions(int width, int height) {
     VISAGE_ASSERT(state_memory_.empty());
     width = std::max(1, width);
@@ -93,6 +157,17 @@ namespace visage {
     if (submission > submit_pass) {
       composite_layer_.invalidate();
       submission = composite_layer_.submit(submission, 0);
+
+      // Render-scale downscale pass: offscreen composite → window presentation FB.
+      // Inserted after composite submission (all canvas + Slug content rendered)
+      // and before bgfx::frame() (which flushes the command buffer).
+      if (render_scale_ > 0.0f && downscale_callback_ && window_fb_idx_ != bgfx::kInvalidHandle) {
+        bgfx::TextureHandle src = bgfx::getTexture(composite_layer_.frameBuffer());
+        if (bgfx::isValid(src))
+          submission = downscale_callback_(submission, src.idx, window_fb_idx_,
+                                           display_width_, display_height_);
+      }
+
       bgfx::frame();
       if (render_frame_ == 0)
         bgfx::frame();
