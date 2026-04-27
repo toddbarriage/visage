@@ -126,6 +126,8 @@ namespace visage {
     // renderers (e.g. Slug text) can submit draw calls to the same surface.
     const bgfx::FrameBufferHandle& windowFrameBuffer() const;
 
+    void setBaseViewId(int id) { base_view_id_ = id; }
+
     HitTestResult hitTest(const Point& position) const override {
       if (position.y < kDefaultClientTitleBarHeight && top_level_->hasClientDecoration())
         return HitTestResult::TitleBar;
@@ -154,6 +156,8 @@ namespace visage {
     bool suppress_resize_notification_ = false;
     int render_width_ = 0;
     int render_height_ = 0;
+
+    int base_view_id_ = 0;
 
     std::vector<Frame*> stale_children_;
     std::vector<Frame*> drawing_children_;

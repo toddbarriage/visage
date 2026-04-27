@@ -228,7 +228,7 @@ namespace visage {
       init();
 
     drawStaleChildren();
-    canvas_->submit();
+    canvas_->submit(base_view_id_);
   }
 
   void ApplicationEditor::setFixedAspectRatio(bool fixed) {
