@@ -82,6 +82,10 @@ namespace visage {
   void WindowEventHandler::handleResized(int width, int height) {
     VISAGE_ASSERT(width >= 0 && height >= 0);
     content_frame_->setNativeBounds(0, 0, width, height);
+
+    if (editor_->isRenderScaleActive())
+      editor_->onDisplayResized();
+
     content_frame_->redraw();
   }
 

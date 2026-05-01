@@ -1316,6 +1316,17 @@ namespace visage {
       child_window->handleResizing(hwnd, l_param, w_param);
       return TRUE;
     }
+    if (msg == WM_SIZE) {
+      LRESULT result = CallWindowProc(child_window->parentWindowProc(), hwnd, msg, w_param, l_param);
+      RECT rc {};
+      if (GetClientRect(hwnd, &rc)) {
+        int width = static_cast<int>(rc.right - rc.left);
+        int height = static_cast<int>(rc.bottom - rc.top);
+        if (width > 0 && height > 0)
+          child_window->setNativeWindowSize(width, height);
+      }
+      return result;
+    }
     if (msg == WM_DPICHANGED) {
       child_window->handleDpiChange(hwnd, l_param, w_param);
       return 0;
@@ -1616,6 +1627,12 @@ namespace visage {
   void WindowWin32::windowContentsResized(int width, int height) {
     if (window_handle_ == nullptr)
       return;
+
+    if (parent_handle_) {
+      SetWindowPos(window_handle_, nullptr, 0, 0, width, height,
+                   SWP_NOZORDER | SWP_NOMOVE);
+      return;
+    }
 
     DpiAwareness dpi_awareness;
     RECT rect;

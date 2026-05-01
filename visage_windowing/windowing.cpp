@@ -99,8 +99,10 @@ namespace visage {
   }
 
   void Window::setNativeWindowSize(int width, int height) {
-    handleResized(width, height);
     windowContentsResized(width, height);
+
+    if (client_width_ != width || client_height_ != height)
+      handleResized(width, height);
   }
 
   void Window::setInternalWindowSize(int width, int height) {
