@@ -379,6 +379,10 @@ namespace visage {
   return YES;
 }
 
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+  return YES;
+}
+
 - (void)keyDown:(NSEvent*)event {
   bool command = [event modifierFlags] & NSEventModifierFlagCommand;
   bool q_or_w = [[event charactersIgnoringModifiers] isEqualToString:@"q"] ||
