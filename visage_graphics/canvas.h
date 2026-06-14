@@ -153,7 +153,7 @@ namespace visage {
       float fill_y = pixels(y);
       float fill_w = pixels(width);
       float fill_h = pixels(height);
-      addShape(Fill(state_.clamp.clamp(fill_x, fill_y, fill_w, fill_h), state_.brush,
+      addShape(Fill(state_.clamp.clamp(state_.x + fill_x, state_.y + fill_y, fill_w, fill_h), state_.brush,
                     state_.x + fill_x, state_.y + fill_y, fill_w, fill_h));
     }
 
