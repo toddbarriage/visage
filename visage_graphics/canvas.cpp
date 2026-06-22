@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include "render_perf_counters.h"  // per-site transient-VB attribution counters
 #endif
 
 namespace visage {
@@ -204,6 +205,12 @@ namespace visage {
         static int32_t maxTvb = 0;            // peak transient VB bytes in window
         static int32_t maxTib = 0;            // peak transient IB bytes in window
 
+        // Per-site transient-VB attribution (render_perf_counters.h). Σ vertex bytes per
+        // window, plus per-frame peak, plus window-summed dropped allocations per site.
+        static uint64_t accPathVb = 0, accQuadVb = 0, accPostVb = 0, accSlugVb = 0;
+        static uint64_t maxPathVb = 0, maxQuadVb = 0, maxSlugVb = 0;
+        static uint64_t accPathDrops = 0, accQuadDrops = 0, accSlugDrops = 0, accPostDrops = 0;
+
         // CPU/GPU frame time in milliseconds: (end - begin) / timerFreq → seconds → ×1000.
         // timerFreq is timestamps-per-second; guard against a 0 freq (GPU timing not
         // supported on some backends → emit 0 rather than divide by zero).
@@ -224,6 +231,22 @@ namespace visage {
         if (s->transientVbUsed > maxTvb) maxTvb = s->transientVbUsed;
         if (s->transientIbUsed > maxTib) maxTib = s->transientIbUsed;
 
+        // Snapshot the per-site attribution counters for the frame just flushed, then zero
+        // them for the next frame. Single-threaded render path → no atomics needed. The
+        // counters accumulate across all instances submitting into this bgfx::frame(), so
+        // this matches the process-global vantage of getStats() read above.
+        {
+          render_perf::Counters& rpc = render_perf::counters();
+          accPathVb += rpc.pathBytes;  accQuadVb += rpc.quadBytes;
+          accPostVb += rpc.postBytes;  accSlugVb += rpc.slugBytes;
+          if (rpc.pathBytes > maxPathVb) maxPathVb = rpc.pathBytes;
+          if (rpc.quadBytes > maxQuadVb) maxQuadVb = rpc.quadBytes;
+          if (rpc.slugBytes > maxSlugVb) maxSlugVb = rpc.slugBytes;
+          accPathDrops += rpc.pathDrops;  accQuadDrops += rpc.quadDrops;
+          accSlugDrops += rpc.slugDrops;  accPostDrops += rpc.postDrops;
+          rpc = render_perf::Counters{};  // reset for next frame
+        }
+
         // Emit one aggregated CSV row roughly every 1000 ms of wall-clock time.
         using clock = std::chrono::steady_clock;
         static const clock::time_point startTime = clock::now();  // t_ms origin (first frame)
@@ -242,7 +265,15 @@ namespace visage {
             f.seekp(0, std::ios::end);
             if (f.tellp() == std::streampos(0)) {
               f << "t_ms,fps,draw_avg,draw_max,tvb_kb_avg,tvb_kb_max,"
-                   "tib_kb_avg,tib_kb_max,cpu_ms_avg,gpu_ms_avg\n";
+                   "tib_kb_avg,tib_kb_max,cpu_ms_avg,gpu_ms_avg,"
+                   // Per-site transient-VB attribution (KB/frame) — path/quad/slug carry
+                   // avg+peak; post is negligible (avg only). tvb_kb above is bgfx's
+                   // ground-truth total: path+quad+slug+post should track it.
+                   "path_kb_avg,path_kb_max,quad_kb_avg,quad_kb_max,"
+                   "slug_kb_avg,slug_kb_max,post_kb_avg,"
+                   // Window-summed dropped allocations per site = the direct flicker signal.
+                   // slug_drops answers whether text flickers too.
+                   "path_drops,quad_drops,slug_drops,post_drops\n";
             }
             return f;
           }();
@@ -251,9 +282,11 @@ namespace visage {
               std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
           const double frames = (double)accFrames;
           // fps == frames counted in this ~1 s window (window is ~1 s → effective FPS).
-          char row[256];
+          char row[512];
           std::snprintf(row, sizeof(row),
-                        "%lld,%llu,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f\n",
+                        "%lld,%llu,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f,"
+                        "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,"
+                        "%llu,%llu,%llu,%llu\n",
                         (long long)tMs,
                         (unsigned long long)accFrames,
                         (double)accDraw / frames,                    // draw_avg
@@ -263,7 +296,18 @@ namespace visage {
                         ((double)accTib / frames) / 1024.0,          // tib_kb_avg
                         (double)maxTib / 1024.0,                     // tib_kb_max
                         accCpuMs / frames,                           // cpu_ms_avg
-                        accGpuMs / frames);                          // gpu_ms_avg
+                        accGpuMs / frames,                           // gpu_ms_avg
+                        ((double)accPathVb / frames) / 1024.0,       // path_kb_avg
+                        (double)maxPathVb / 1024.0,                  // path_kb_max
+                        ((double)accQuadVb / frames) / 1024.0,       // quad_kb_avg
+                        (double)maxQuadVb / 1024.0,                  // quad_kb_max
+                        ((double)accSlugVb / frames) / 1024.0,       // slug_kb_avg
+                        (double)maxSlugVb / 1024.0,                  // slug_kb_max
+                        ((double)accPostVb / frames) / 1024.0,       // post_kb_avg
+                        (unsigned long long)accPathDrops,            // path_drops
+                        (unsigned long long)accQuadDrops,            // quad_drops
+                        (unsigned long long)accSlugDrops,            // slug_drops
+                        (unsigned long long)accPostDrops);           // post_drops
           csv << row;
           csv.flush();  // 1 Hz flush — cheap, and survives a host crash mid-session.
 
@@ -273,6 +317,9 @@ namespace visage {
           accCpuMs = accGpuMs = 0.0;
           maxDraw = 0;
           maxTvb = maxTib = 0;
+          accPathVb = accQuadVb = accPostVb = accSlugVb = 0;
+          maxPathVb = maxQuadVb = maxSlugVb = 0;
+          accPathDrops = accQuadDrops = accSlugDrops = accPostDrops = 0;
           lastEmit = now;
         }
       }

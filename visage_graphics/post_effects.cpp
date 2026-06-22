@@ -28,6 +28,8 @@
 
 #include <bgfx/bgfx.h>
 
+#include "render_perf_counters.h"  // RENDER_PERF_DIAG: transient-VB attribution (no-op when OFF)
+
 namespace visage {
   template<const char* name>
   void setPostEffectUniform(float value0, float value1 = 0.0f, float value2 = 0.0f, float value3 = 0.0f) {
@@ -173,8 +175,15 @@ namespace visage {
     bgfx::TransientVertexBuffer first_sample_buffer {};
     bgfx::allocTransientVertexBuffer(&first_sample_buffer, 4, UvVertex::layout());
     UvVertex* uv_data = reinterpret_cast<UvVertex*>(first_sample_buffer.data);
-    if (uv_data == nullptr)
+    if (uv_data == nullptr) {
+#if RENDER_PERF_DIAG
+      visage::render_perf::counters().postDrops++;
+#endif
       return;
+    }
+#if RENDER_PERF_DIAG
+    visage::render_perf::counters().postBytes += static_cast<uint64_t>(4) * UvVertex::layout().getStride();
+#endif
 
     for (int i = 0; i < kVerticesPerQuad; ++i) {
       uv_data[i].x = screen_vertices_[i].x;

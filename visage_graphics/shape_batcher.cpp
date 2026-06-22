@@ -34,6 +34,8 @@
 
 #include <bgfx/bgfx.h>
 
+#include "render_perf_counters.h"  // RENDER_PERF_DIAG: transient-VB attribution (no-op when OFF)
+
 namespace visage {
   static constexpr uint64_t blendModeValue(BlendMode blend_mode) {
     switch (blend_mode) {
@@ -125,9 +127,15 @@ namespace visage {
     int num_vertices = num_quads * kVerticesPerQuad;
     int num_indices = num_quads * kIndicesPerQuad;
     if (!bgfx::allocTransientBuffers(vertex_buffer, layout, num_vertices, index_buffer, num_indices)) {
+#if RENDER_PERF_DIAG
+      visage::render_perf::counters().quadDrops++;
+#endif
       VISAGE_LOG("Not enough transient buffer memory for %d quads", num_quads);
       return false;
     }
+#if RENDER_PERF_DIAG
+    visage::render_perf::counters().quadBytes += static_cast<uint64_t>(num_vertices) * layout.getStride();
+#endif
 
     uint16_t* indices = reinterpret_cast<uint16_t*>(index_buffer->data);
     for (int i = 0; i < num_quads; ++i) {

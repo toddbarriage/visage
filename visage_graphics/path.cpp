@@ -30,6 +30,8 @@
 #include <complex>
 #include <memory>
 
+#include "render_perf_counters.h"  // RENDER_PERF_DIAG: transient-VB attribution (no-op when OFF)
+
 namespace visage {
   static float toFloat(const std::string& str) {
     try {
@@ -716,9 +718,15 @@ namespace visage {
     int num_indices = num_triangles * indices_per_triangle;
     if (!bgfx::allocTransientBuffers(&vertex_buffer, PathVertex::layout(), num_vertices,
                                      &index_buffer, num_indices, true)) {
+#if RENDER_PERF_DIAG
+      visage::render_perf::counters().pathDrops++;
+#endif
       VISAGE_LOG("PathAtlas::updatePaths: Failed to allocate transient buffers");
       return submit_pass + 1;
     }
+#if RENDER_PERF_DIAG
+    visage::render_perf::counters().pathBytes += static_cast<uint64_t>(num_vertices) * PathVertex::layout().getStride();
+#endif
 
     auto vertices = reinterpret_cast<PathVertex*>(vertex_buffer.data);
     auto indices = reinterpret_cast<uint32_t*>(index_buffer.data);

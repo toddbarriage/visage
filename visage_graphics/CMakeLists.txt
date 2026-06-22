@@ -61,7 +61,10 @@ endif ()
 # (non-diagnostic) build needs an explicit -DRENDER_PERF_DIAG=OFF reconfigure.
 option(RENDER_PERF_DIAG "Build Visage with the per-frame bgfx render-performance CSV logger" OFF)
 if (RENDER_PERF_DIAG)
-  target_compile_definitions(VisageGraphics PRIVATE RENDER_PERF_DIAG=1)
+  # PUBLIC (not PRIVATE): the per-site transient-VB counters in render_perf_counters.h are
+  # also incremented by libs/s-series-ui (SlugRenderer.cpp), which links VisageGraphics and
+  # must see the define to compile in its slug attribution. Dependents inherit it.
+  target_compile_definitions(VisageGraphics PUBLIC RENDER_PERF_DIAG=1)
 endif ()
 
 set(BGFX_CONFIG_MULTITHREADED 0 CACHE INTERNAL "" FORCE)
