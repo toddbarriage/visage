@@ -136,9 +136,11 @@ namespace visage {
     }
 #if RENDER_PERF_DIAG
     {
+      // Global cross-check only. Per-SCOPE quad bytes are attributed per-shape in
+      // setupQuads() (the deferred submit walk), because a single batch alloc here
+      // can mix scopes and scopes().current is unscoped by submit time.
       const uint64_t rperf_bytes = static_cast<uint64_t>(num_vertices) * layout.getStride();
       visage::render_perf::counters().quadBytes += rperf_bytes;
-      visage::render_perf::scopeAddBytes(visage::render_perf::kQuad, rperf_bytes);
     }
 #endif
 

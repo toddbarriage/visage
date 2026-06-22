@@ -23,6 +23,7 @@
 
 #include "graphics_utils.h"
 #include "post_effects.h"
+#include "render_perf_counters.h"  // RENDER_PERF_DIAG: per-shape quad attribution (no-op when OFF)
 #include "shapes.h"
 #include "visage_utils/space.h"
 
@@ -97,6 +98,14 @@ namespace visage {
     if (results.vertices == nullptr)
       return results;
     int vertex_index = 0;
+#if RENDER_PERF_DIAG
+    // Bytes per emitted quad, matching initTransientQuadBuffers' real alloc math
+    // (kVerticesPerQuad * stride). Each non-clamped (shape, invalid_rect) pair below
+    // emits one quad; attribute its bytes to the shape's record-time scope. The sum
+    // over this loop equals the global counters().quadBytes for this batch.
+    const uint64_t rperf_bytes_per_quad =
+        static_cast<uint64_t>(kVerticesPerQuad) * T::Vertex::layout().getStride();
+#endif
 
     for (const auto& batch : batches) {
       for (const T& shape : *batch.shapes) {
@@ -111,6 +120,10 @@ namespace visage {
           shape.setVertexData(results.vertices + vertex_index);
           results.radial_gradient = shape.radialGradient();
           vertex_index += kVerticesPerQuad;
+#if RENDER_PERF_DIAG
+          ::visage::render_perf::scopeAddBytesTo(shape.rperf_scope, ::visage::render_perf::kQuad,
+                                                 rperf_bytes_per_quad);
+#endif
         }
       }
     }

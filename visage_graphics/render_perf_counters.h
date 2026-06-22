@@ -139,6 +139,23 @@ namespace visage::render_perf {
     r.frameDrops[r.current][consumer] += 1;
   }
 
+  // Deferred-attribution variants: attribute to a SPECIFIC scope id captured at
+  // RECORD time (stamped onto the shape), NOT scopes().current — which, for the
+  // deferred path/quad submit pass, is back to 0 (unscoped) by the time the
+  // transient VB is actually allocated. The id is clamped defensively to
+  // [0, count) so a stale/out-of-range stamp folds into unscoped rather than
+  // indexing out of bounds.
+  inline void scopeAddBytesTo(int id, int consumer, uint64_t bytes) {
+    ScopeRegistry& r = scopes();
+    if (id < 0 || id >= r.count) id = 0;
+    r.frameBytes[id][consumer] += bytes;
+  }
+  inline void scopeAddDropTo(int id, int consumer) {
+    ScopeRegistry& r = scopes();
+    if (id < 0 || id >= r.count) id = 0;
+    r.frameDrops[id][consumer] += 1;
+  }
+
   // Called once per flushed frame (canvas.cpp, beside the global reset): fold this
   // frame's per-scope bytes/drops into the window (sum + per-frame peak), then zero.
   inline void scopeAccumulateFrameAndReset() {

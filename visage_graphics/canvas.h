@@ -607,6 +607,13 @@ namespace visage {
 
     template<typename T>
     void addShape(T shape) {
+#if RENDER_PERF_DIAG
+      // Record time: capture the active RPERF_SCOPE onto the shape so the deferred
+      // submit pass attributes its transient-VB bytes to the element that drew it
+      // (scopes().current is back to unscoped by then). For paths the load-bearing
+      // stamp is on the PackedPathRect (PathAtlas::addPath); this covers quads.
+      shape.rperf_scope = ::visage::render_perf::scopes().current;
+#endif
       state_.current_region->shape_batcher_.addShape(std::move(shape), state_.blend_mode);
     }
 

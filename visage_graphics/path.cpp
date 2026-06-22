@@ -727,9 +727,26 @@ namespace visage {
     }
 #if RENDER_PERF_DIAG
     {
-      const uint64_t rperf_bytes = static_cast<uint64_t>(num_vertices) * PathVertex::layout().getStride();
-      visage::render_perf::counters().pathBytes += rperf_bytes;
-      visage::render_perf::scopeAddBytes(visage::render_perf::kPath, rperf_bytes);
+      const uint64_t rperf_stride = PathVertex::layout().getStride();
+      const uint64_t rperf_bytes = static_cast<uint64_t>(num_vertices) * rperf_stride;
+      visage::render_perf::counters().pathBytes += rperf_bytes;  // global cross-check
+      // Per-PATH attribution to the scope captured at record time (PackedPathRect::
+      // rperf_scope). Mirrors the num_triangles math above exactly (only needs_update
+      // paths contribute, vertices_per_triangle as resolved for this device), so the
+      // per-path sum equals rperf_bytes. needs_update is still set here (cleared in the
+      // fill loop below).
+      for (auto& path : paths_) {
+        if (!path->needs_update)
+          continue;
+        int path_triangles = 0;
+        for (const auto& sub_path : path->path.subPaths()) {
+          if (sub_path.points.size() > 2)
+            path_triangles += static_cast<int>(sub_path.points.size());
+        }
+        const uint64_t path_bytes = static_cast<uint64_t>(path_triangles) *
+                                    vertices_per_triangle * rperf_stride;
+        visage::render_perf::scopeAddBytesTo(path->rperf_scope, visage::render_perf::kPath, path_bytes);
+      }
     }
 #endif
 

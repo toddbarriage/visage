@@ -97,6 +97,12 @@ namespace visage {
     float y = 0.0f;
     float width = 0.0f;
     float height = 0.0f;
+#if RENDER_PERF_DIAG
+    // RENDER_PERF_DIAG: scope id stamped at RECORD time (Canvas::addShape) so the
+    // deferred submit pass can attribute this shape's transient-VB bytes to the
+    // element that drew it. Diag-only member => release struct layout unchanged.
+    int rperf_scope = 0;
+#endif
 
     bool radialGradient() const {
       return brush && brush->position().shape == GradientPosition::InterpolationShape::Radial;

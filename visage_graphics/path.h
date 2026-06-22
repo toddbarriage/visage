@@ -22,6 +22,7 @@
 #pragma once
 
 #include "graphics_utils.h"
+#include "render_perf_counters.h"  // RENDER_PERF_DIAG: per-path scope stamp (no-op when OFF)
 #include "visage_utils/space.h"
 
 #include <cfloat>
@@ -604,6 +605,12 @@ namespace visage {
       int w = 0;
       int h = 0;
       bool needs_update = true;
+#if RENDER_PERF_DIAG
+      // RENDER_PERF_DIAG: scope id carried from the PathFillWrapper that recorded
+      // this path (stamped in addPath at record time). updatePaths iterates these
+      // records, not the wrappers, so the id must live on the record. Diag-only.
+      int rperf_scope = 0;
+#endif
     };
 
     struct PackedPathReference {
@@ -662,6 +669,11 @@ namespace visage {
 
     PackedPath addPath(const Path& path, int width, int height) {
       std::unique_ptr<PackedPathRect> packed_path_rect = std::make_unique<PackedPathRect>(path);
+#if RENDER_PERF_DIAG
+      // Record time: addPath runs inside the PathFillWrapper ctor, which runs inside
+      // the RPERF_SCOPE-wrapped draw call, so scopes().current is the drawing element.
+      packed_path_rect->rperf_scope = ::visage::render_perf::scopes().current;
+#endif
       if (!atlas_map_.addRect(packed_path_rect.get(), width, height))
         needs_packing_ = true;
 
