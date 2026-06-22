@@ -81,6 +81,37 @@ namespace visage {
     std::vector<float> y_values_;
   };
 
+  // Like GraphData, but stores TWO contiguous rows so a single addData(ptr, N, 2) uploads
+  // both: row 0 = y values [0..N), row 1 = presence mask [N..2N). The fs_pitch_line shader
+  // samples the mask one texel down and breaks the line wherever an endpoint is absent
+  // (mask < 0.5), so gaps don't require lifting the pen on the CPU. Distinct from GraphData
+  // (single-channel) and never substituted for it.
+  class PitchLineData {
+  public:
+    PitchLineData(int n = 0) : num_points_(n), values_(2 * n, 0.0f) { }
+
+    void setNumPoints(int n) {
+      num_points_ = n;
+      values_.assign(2 * n, 0.0f);
+    }
+
+    int numPoints() const { return num_points_; }
+
+    void clear() { std::fill(values_.begin(), values_.end(), 0.0f); }
+
+    float& y(int i) { return values_[i]; }                // row 0: [0 .. N)
+    float& mask(int i) { return values_[num_points_ + i]; } // row 1: [N .. 2N)
+
+    const float& y(int i) const { return values_[i]; }
+    const float& mask(int i) const { return values_[num_points_ + i]; }
+
+    const unsigned char* data() const { return (const unsigned char*)values_.data(); }
+
+  private:
+    int num_points_ = 0;
+    std::vector<float> values_;
+  };
+
   class HeatMapData {
   public:
     HeatMapData(int width = 0, int height = 0) :

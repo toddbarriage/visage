@@ -459,6 +459,15 @@ namespace visage {
       addGraphFillGradient(data, pixels(x), pixels(y), pixels(width), pixels(height), fill_center);
     }
 
+    // Like graphLine, but PitchLineData carries a per-column presence mask: the shader
+    // breaks the line wherever a column's mask < 0.5, so gaps don't require lifting the
+    // pen on the CPU. Use for sparse/intermittent curves (e.g. a pitch trail).
+    template<typename T1, typename T2, typename T3, typename T4, typename T5>
+    void pitchLine(const PitchLineData& data, const T1& x, const T2& y, const T3& width,
+                   const T4& height, const T5& thickness) {
+      addPitchLine(data, pixels(x), pixels(y), pixels(width), pixels(height), pixels(thickness));
+    }
+
     template<typename T1, typename T2, typename T3, typename T4>
     void heatMap(const HeatMapData& data, const T1& x, const T2& y, const T3& width, const T4& height) {
       if (data.width() == 0 || data.height() == 0)
@@ -836,6 +845,11 @@ namespace visage {
                               float center) {
       addShape(GraphFillGradientWrapper(state_.clamp, state_.brush, state_.x + x, state_.y + y, width,
                                         height, center, data, dataAtlas()));
+    }
+
+    void addPitchLine(const PitchLineData& data, float x, float y, float width, float height, float thickness) {
+      addShape(PitchLineWrapper(state_.clamp, state_.brush, state_.x + x, state_.y + y, width,
+                                height, thickness, data, dataAtlas()));
     }
 
     void addHeatMap(const HeatMapData& data, float x, float y, float width, float height) {

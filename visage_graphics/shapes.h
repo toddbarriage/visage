@@ -559,6 +559,36 @@ namespace visage {
     ImageAtlas::PackedImage packed_data;
   };
 
+  // Like GraphLineWrapper but uses fs_pitch_line and a PitchLineData carrying TWO rows
+  // (y values + presence mask). Uploads height 2 so the shader can sample the mask one
+  // texel down and break the line at gaps. Distinct batch via data-atlas tag 3 (the last
+  // available tag: GraphLine=0, GraphFill=1, GraphFillGradient=2).
+  struct PitchLineWrapper : Primitive<> {
+    static const EmbeddedFile& vertexShader();
+    static const EmbeddedFile& fragmentShader();
+
+    PitchLineWrapper(const ClampBounds& clamp, const PackedBrush* brush, float x, float y, float width,
+                     float height, float thick, const PitchLineData& pitch_data, ImageAtlas* data_atlas) :
+        Primitive(taggedPointer(data_atlas, 3), clamp, brush, x, y, width, height),
+        data_atlas(data_atlas), data(pitch_data),
+        packed_data(data_atlas->addData(data.data(), data.numPoints(), 2)) {
+      thickness = thick;
+      pixel_width = packed_data.w() - 1;
+    }
+
+    void setVertexData(Vertex* vertices) const {
+      setPrimitiveData(vertices);
+      for (int v = 0; v < kVerticesPerQuad; ++v) {
+        vertices[v].value1 = packed_data.x() + 0.5f;
+        vertices[v].value2 = packed_data.y() + 0.5f;
+      }
+    }
+
+    ImageAtlas* data_atlas = nullptr;
+    PitchLineData data;
+    ImageAtlas::PackedImage packed_data;
+  };
+
   struct HeatMapWrapper : Primitive<> {
     static const EmbeddedFile& vertexShader();
     static const EmbeddedFile& fragmentShader();
