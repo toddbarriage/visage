@@ -203,6 +203,11 @@ namespace visage {
       setImageAtlasUniform(batches[0].shapes->front().data_atlas);
   }
 
+  void setGraphDataUniform(const BatchVector<GraphFillGradientWrapper>& batches) {
+    if (!batches.empty() && !batches[0].shapes->empty())
+      setImageAtlasUniform(batches[0].shapes->front().data_atlas);
+  }
+
   void setHeatMapDataUniform(const BatchVector<HeatMapWrapper>& batches) {
     if (!batches.empty() && !batches[0].shapes->empty())
       setImageAtlasUniform(batches[0].shapes->front().data_atlas);

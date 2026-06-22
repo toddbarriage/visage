@@ -450,6 +450,15 @@ namespace visage {
       addGraphFill(data, pixels(x), pixels(y), pixels(width), pixels(height), fill_center);
     }
 
+    // Like graphFill, but the brush gradient fades along the curve (contour-relative
+    // vertical): set a Brush::vertical(crest, baseline) and it ramps from the curve to
+    // the fill_center baseline. A solid brush draws flat (same as graphFill).
+    template<typename T1, typename T2, typename T3, typename T4>
+    void graphFillGradient(const GraphData& data, const T1& x, const T2& y, const T3& width,
+                           const T4& height, float fill_center) {
+      addGraphFillGradient(data, pixels(x), pixels(y), pixels(width), pixels(height), fill_center);
+    }
+
     template<typename T1, typename T2, typename T3, typename T4>
     void heatMap(const HeatMapData& data, const T1& x, const T2& y, const T3& width, const T4& height) {
       if (data.width() == 0 || data.height() == 0)
@@ -821,6 +830,12 @@ namespace visage {
     void addGraphFill(const GraphData& data, float x, float y, float width, float height, float center) {
       addShape(GraphFillWrapper(state_.clamp, state_.brush, state_.x + x, state_.y + y, width,
                                 height, center, data, dataAtlas()));
+    }
+
+    void addGraphFillGradient(const GraphData& data, float x, float y, float width, float height,
+                              float center) {
+      addShape(GraphFillGradientWrapper(state_.clamp, state_.brush, state_.x + x, state_.y + y, width,
+                                        height, center, data, dataAtlas()));
     }
 
     void addHeatMap(const HeatMapData& data, float x, float y, float width, float height) {
