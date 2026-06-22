@@ -52,6 +52,18 @@ if (VISAGE_ENABLE_GRAPHICS_DEBUG_LOGGING)
   target_compile_definitions(VisageGraphics PUBLIC VISAGE_GRAPHICS_DEBUG_LOGGING=1)
 endif ()
 
+# Render-performance diagnostic — OFF by default; enables the RENDER_PERF_DIAG guard
+# in canvas.cpp, which taps bgfx::getStats() once per rendered frame and aggregates a
+# 1 Hz CSV (~/render-perf-diag.csv) of draw calls, transient buffer usage, and CPU/GPU
+# frame time. This is the measurement tool for the upcoming UI-caching refactor.
+# Release builds are byte-identical whether or not this option is set; ALL diagnostic
+# code is compiled out when OFF. NOTE: the build cache persists this option, so a normal
+# (non-diagnostic) build needs an explicit -DRENDER_PERF_DIAG=OFF reconfigure.
+option(RENDER_PERF_DIAG "Build Visage with the per-frame bgfx render-performance CSV logger" OFF)
+if (RENDER_PERF_DIAG)
+  target_compile_definitions(VisageGraphics PRIVATE RENDER_PERF_DIAG=1)
+endif ()
+
 set(BGFX_CONFIG_MULTITHREADED 0 CACHE INTERNAL "" FORCE)
 if (NOT EMSCRIPTEN AND VISAGE_ENABLE_BACKGROUND_GRAPHICS_THREAD)
   set(BGFX_CONFIG_MULTITHREADED 1 CACHE INTERNAL "" FORCE)

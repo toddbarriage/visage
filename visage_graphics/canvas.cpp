@@ -27,6 +27,19 @@
 
 #include <bgfx/bgfx.h>
 
+#if RENDER_PERF_DIAG
+// Render-performance diagnostic (compile-flagged via the RENDER_PERF_DIAG CMake option).
+// Aggregates bgfx per-frame stats and appends a 1 Hz CSV row to ~/render-perf-diag.csv.
+// Runs entirely on Visage's render thread — never the audio thread — so an open ofstream
+// flushed once per second is cheap. Compiled out completely when the option is OFF.
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#endif
+
 namespace visage {
   bool Canvas::swapChainSupported() {
     return bgfx::getCaps()->supported & BGFX_CAPS_SWAP_CHAIN;
@@ -169,6 +182,102 @@ namespace visage {
       }
 
       bgfx::frame();
+
+#if RENDER_PERF_DIAG
+      // Tap bgfx::getStats() IMMEDIATELY after the per-frame bgfx::frame() flush:
+      // getStats() reports the most-recently-SUBMITTED frame, so this is the only point
+      // where the stats describe the frame we just rendered (this is the single
+      // once-per-rendered-frame frame() call — the render_frame_==0 double-flush below
+      // and the skipped-frame branch are not rendered content). Read-only observation
+      // plus a 1 Hz file append; it changes no rendering behavior.
+      {
+        const bgfx::Stats* s = bgfx::getStats();
+
+        // Per-frame accumulators (render thread is single-threaded → plain statics are safe).
+        static uint64_t accFrames = 0;        // frames counted in the current 1 s window
+        static uint64_t accDraw = 0;          // Σ draw calls
+        static uint64_t accTvb = 0;           // Σ transient vertex-buffer bytes used
+        static uint64_t accTib = 0;           // Σ transient index-buffer bytes used
+        static double accCpuMs = 0.0;         // Σ CPU frame time (ms)
+        static double accGpuMs = 0.0;         // Σ GPU frame time (ms)
+        static uint32_t maxDraw = 0;          // peak draw calls in window
+        static int32_t maxTvb = 0;            // peak transient VB bytes in window
+        static int32_t maxTib = 0;            // peak transient IB bytes in window
+
+        // CPU/GPU frame time in milliseconds: (end - begin) / timerFreq → seconds → ×1000.
+        // timerFreq is timestamps-per-second; guard against a 0 freq (GPU timing not
+        // supported on some backends → emit 0 rather than divide by zero).
+        const double cpuMs = (s->cpuTimerFreq > 0)
+            ? (double)(s->cpuTimeEnd - s->cpuTimeBegin) / (double)s->cpuTimerFreq * 1000.0
+            : 0.0;
+        const double gpuMs = (s->gpuTimerFreq > 0)
+            ? (double)(s->gpuTimeEnd - s->gpuTimeBegin) / (double)s->gpuTimerFreq * 1000.0
+            : 0.0;
+
+        accFrames++;
+        accDraw += s->numDraw;
+        accTvb += (uint64_t)(s->transientVbUsed < 0 ? 0 : s->transientVbUsed);
+        accTib += (uint64_t)(s->transientIbUsed < 0 ? 0 : s->transientIbUsed);
+        accCpuMs += cpuMs;
+        accGpuMs += gpuMs;
+        if (s->numDraw > maxDraw) maxDraw = s->numDraw;
+        if (s->transientVbUsed > maxTvb) maxTvb = s->transientVbUsed;
+        if (s->transientIbUsed > maxTib) maxTib = s->transientIbUsed;
+
+        // Emit one aggregated CSV row roughly every 1000 ms of wall-clock time.
+        using clock = std::chrono::steady_clock;
+        static const clock::time_point startTime = clock::now();  // t_ms origin (first frame)
+        static clock::time_point lastEmit = startTime;
+        const clock::time_point now = clock::now();
+        const auto sinceEmitMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - lastEmit).count();
+
+        if (sinceEmitMs >= 1000 && accFrames > 0) {
+          // Open the CSV once (append mode) and keep it open; write a header if it's new/empty.
+          static std::ofstream csv = [] {
+            const char* home = std::getenv("HOME");
+            std::string path = home ? (std::string(home) + "/render-perf-diag.csv")
+                                    : std::string("/tmp/render-perf-diag.csv");
+            std::ofstream f(path, std::ios::app);
+            f.seekp(0, std::ios::end);
+            if (f.tellp() == std::streampos(0)) {
+              f << "t_ms,fps,draw_avg,draw_max,tvb_kb_avg,tvb_kb_max,"
+                   "tib_kb_avg,tib_kb_max,cpu_ms_avg,gpu_ms_avg\n";
+            }
+            return f;
+          }();
+
+          const auto tMs =
+              std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+          const double frames = (double)accFrames;
+          // fps == frames counted in this ~1 s window (window is ~1 s → effective FPS).
+          char row[256];
+          std::snprintf(row, sizeof(row),
+                        "%lld,%llu,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f\n",
+                        (long long)tMs,
+                        (unsigned long long)accFrames,
+                        (double)accDraw / frames,                    // draw_avg
+                        maxDraw,                                     // draw_max
+                        ((double)accTvb / frames) / 1024.0,          // tvb_kb_avg
+                        (double)maxTvb / 1024.0,                     // tvb_kb_max
+                        ((double)accTib / frames) / 1024.0,          // tib_kb_avg
+                        (double)maxTib / 1024.0,                     // tib_kb_max
+                        accCpuMs / frames,                           // cpu_ms_avg
+                        accGpuMs / frames);                          // gpu_ms_avg
+          csv << row;
+          csv.flush();  // 1 Hz flush — cheap, and survives a host crash mid-session.
+
+          // Reset all accumulators for the next window.
+          accFrames = 0;
+          accDraw = accTvb = accTib = 0;
+          accCpuMs = accGpuMs = 0.0;
+          maxDraw = 0;
+          maxTvb = maxTib = 0;
+          lastEmit = now;
+        }
+      }
+#endif
+
       if (render_frame_ == 0)
         bgfx::frame();
 
