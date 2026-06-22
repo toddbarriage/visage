@@ -720,12 +720,17 @@ namespace visage {
                                      &index_buffer, num_indices, true)) {
 #if RENDER_PERF_DIAG
       visage::render_perf::counters().pathDrops++;
+      visage::render_perf::scopeAddDrop(visage::render_perf::kPath);
 #endif
       VISAGE_LOG("PathAtlas::updatePaths: Failed to allocate transient buffers");
       return submit_pass + 1;
     }
 #if RENDER_PERF_DIAG
-    visage::render_perf::counters().pathBytes += static_cast<uint64_t>(num_vertices) * PathVertex::layout().getStride();
+    {
+      const uint64_t rperf_bytes = static_cast<uint64_t>(num_vertices) * PathVertex::layout().getStride();
+      visage::render_perf::counters().pathBytes += rperf_bytes;
+      visage::render_perf::scopeAddBytes(visage::render_perf::kPath, rperf_bytes);
+    }
 #endif
 
     auto vertices = reinterpret_cast<PathVertex*>(vertex_buffer.data);

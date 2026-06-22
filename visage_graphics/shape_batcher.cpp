@@ -129,12 +129,17 @@ namespace visage {
     if (!bgfx::allocTransientBuffers(vertex_buffer, layout, num_vertices, index_buffer, num_indices)) {
 #if RENDER_PERF_DIAG
       visage::render_perf::counters().quadDrops++;
+      visage::render_perf::scopeAddDrop(visage::render_perf::kQuad);
 #endif
       VISAGE_LOG("Not enough transient buffer memory for %d quads", num_quads);
       return false;
     }
 #if RENDER_PERF_DIAG
-    visage::render_perf::counters().quadBytes += static_cast<uint64_t>(num_vertices) * layout.getStride();
+    {
+      const uint64_t rperf_bytes = static_cast<uint64_t>(num_vertices) * layout.getStride();
+      visage::render_perf::counters().quadBytes += rperf_bytes;
+      visage::render_perf::scopeAddBytes(visage::render_perf::kQuad, rperf_bytes);
+    }
 #endif
 
     uint16_t* indices = reinterpret_cast<uint16_t*>(index_buffer->data);

@@ -245,6 +245,11 @@ namespace visage {
           accPathDrops += rpc.pathDrops;  accQuadDrops += rpc.quadDrops;
           accSlugDrops += rpc.slugDrops;  accPostDrops += rpc.postDrops;
           rpc = render_perf::Counters{};  // reset for next frame
+
+          // Per-element (scope) attribution: fold this frame's per-scope bytes/drops
+          // into the window accumulators, then zero them for the next frame. Mirrors
+          // the global reset above; independent storage, so order is immaterial.
+          render_perf::scopeAccumulateFrameAndReset();
         }
 
         // Emit one aggregated CSV row roughly every 1000 ms of wall-clock time.
@@ -310,6 +315,52 @@ namespace visage {
                         (unsigned long long)accPostDrops);           // post_drops
           csv << row;
           csv.flush();  // 1 Hz flush — cheap, and survives a host crash mid-session.
+
+          // --- Per-element (scope) attribution: long-format companion file, one row
+          //     per ACTIVE scope this window (idle scopes skipped to keep it lean).
+          //     Shares t_ms with the global row above so the two files align. The sum
+          //     of every scope's bytes per consumer == the global path/quad/post/slug
+          //     KB above (slot 0 "unscoped" catches any un-annotated draw) — a built-in
+          //     miscount gate. ---
+          {
+            static std::ofstream scsv = [] {
+              const char* home = std::getenv("HOME");
+              std::string path = home ? (std::string(home) + "/render-perf-scopes.csv")
+                                      : std::string("/tmp/render-perf-scopes.csv");
+              std::ofstream f(path, std::ios::app);
+              f.seekp(0, std::ios::end);
+              if (f.tellp() == std::streampos(0)) {
+                f << "t_ms,scope,frames,"
+                     "path_kb_avg,path_kb_max,quad_kb_avg,quad_kb_max,"
+                     "post_kb_avg,post_kb_max,slug_kb_avg,slug_kb_max,"
+                     "path_drops,quad_drops,post_drops,slug_drops\n";
+              }
+              return f;
+            }();
+
+            render_perf::ScopeRegistry& reg = render_perf::scopes();
+            for (int i = 0; i < reg.count; ++i) {
+              const render_perf::ScopeWindow& w = reg.window[i];
+              const uint64_t activity = w.sumBytes[0] + w.sumBytes[1] + w.sumBytes[2] + w.sumBytes[3] +
+                                        w.sumDrops[0] + w.sumDrops[1] + w.sumDrops[2] + w.sumDrops[3];
+              if (activity == 0) continue;  // skip scopes idle this window
+              char srow[384];
+              std::snprintf(srow, sizeof(srow),
+                            "%lld,%s,%llu,"
+                            "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,"
+                            "%llu,%llu,%llu,%llu\n",
+                            (long long)tMs, reg.names[i], (unsigned long long)accFrames,
+                            ((double)w.sumBytes[0] / frames) / 1024.0, (double)w.maxBytes[0] / 1024.0,
+                            ((double)w.sumBytes[1] / frames) / 1024.0, (double)w.maxBytes[1] / 1024.0,
+                            ((double)w.sumBytes[2] / frames) / 1024.0, (double)w.maxBytes[2] / 1024.0,
+                            ((double)w.sumBytes[3] / frames) / 1024.0, (double)w.maxBytes[3] / 1024.0,
+                            (unsigned long long)w.sumDrops[0], (unsigned long long)w.sumDrops[1],
+                            (unsigned long long)w.sumDrops[2], (unsigned long long)w.sumDrops[3]);
+              scsv << srow;
+            }
+            scsv.flush();
+            render_perf::scopeResetWindow();
+          }
 
           // Reset all accumulators for the next window.
           accFrames = 0;

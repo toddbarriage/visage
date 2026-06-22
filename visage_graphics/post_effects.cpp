@@ -178,11 +178,16 @@ namespace visage {
     if (uv_data == nullptr) {
 #if RENDER_PERF_DIAG
       visage::render_perf::counters().postDrops++;
+      visage::render_perf::scopeAddDrop(visage::render_perf::kPost);
 #endif
       return;
     }
 #if RENDER_PERF_DIAG
-    visage::render_perf::counters().postBytes += static_cast<uint64_t>(4) * UvVertex::layout().getStride();
+    {
+      const uint64_t rperf_bytes = static_cast<uint64_t>(4) * UvVertex::layout().getStride();
+      visage::render_perf::counters().postBytes += rperf_bytes;
+      visage::render_perf::scopeAddBytes(visage::render_perf::kPost, rperf_bytes);
+    }
 #endif
 
     for (int i = 0; i < kVerticesPerQuad; ++i) {
