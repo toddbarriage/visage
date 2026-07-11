@@ -24,6 +24,7 @@
 #include "canvas.h"
 #include "embedded/shaders.h"
 #include "graphics_caches.h"
+#include "renderer.h"
 #include "uniforms.h"
 
 #include <bgfx/bgfx.h>
@@ -62,6 +63,15 @@ namespace visage {
     }
 
     void destroyFrameBuffers() {
+      // A host may CONSTRUCT an editor and destroy it again without ever attaching it or rendering a
+      // frame -- PluginDoctor does exactly that from VST3PluginInstance::hasEditor(). In that case bgfx
+      // was never initialized, and every bgfx entry point below dereferences a null global context.
+      // (Two hazards, not one: the buffer arrays are VALUE-initialized, so their handle index is 0 --
+      // which bgfx::isValid() reports as VALID -- and bgfx::frame() is called unconditionally at the
+      // end.) Guard the whole teardown on the renderer actually being up.
+      if (!Renderer::instance().initialized())
+        return;
+
       for (auto& buffer : downsample_buffers1) {
         if (bgfx::isValid(buffer))
           bgfx::destroy(buffer);
